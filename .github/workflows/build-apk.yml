@@ -25,36 +25,51 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-          cache: gradle
+
+      - name: Locate Android project
+        id: project
+        shell: bash
+        run: |
+          PROJECT_DIR="$(find . -type f -name settings.gradle.kts -not -path '*/.gradle/*' -print -quit | xargs -r dirname)"
+          if [ -z "$PROJECT_DIR" ]; then
+            PROJECT_DIR="$(find . -type f -name settings.gradle -not -path '*/.gradle/*' -print -quit | xargs -r dirname)"
+          fi
+          if [ -z "$PROJECT_DIR" ] || [ ! -f "$PROJECT_DIR/app/build.gradle.kts" ]; then
+            echo "ERROR: Could not find the Android project (settings.gradle(.kts) and app/build.gradle.kts). Check that the project files are committed to GitHub."
+            find . -maxdepth 4 -type f | sort | head -200
+            exit 1
+          fi
+          PROJECT_DIR="${PROJECT_DIR#./}"
+          [ -n "$PROJECT_DIR" ] || PROJECT_DIR="."
+          echo "dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
+          echo "Found Android project at: $PROJECT_DIR"
 
       - name: Accept Android SDK licenses and install required packages
         shell: bash
         run: |
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           if [ ! -x "$SDKMANAGER" ]; then
-            SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort | tail -n 1)"
+            SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager 2>/dev/null | sort | tail -n 1)"
           fi
           if [ -z "$SDKMANAGER" ] || [ ! -x "$SDKMANAGER" ]; then
-            echo "ERROR: Android sdkmanager was not found."
+            echo "ERROR: Android sdkmanager was not found on the runner."
             exit 1
           fi
           yes | "$SDKMANAGER" --licenses >/dev/null || true
           "$SDKMANAGER" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Check Gradle wrapper
-        run: |
-          if [ ! -f ./gradlew ]; then
-            echo "ERROR: gradlew is missing from the repository root."
-            exit 1
-          fi
-          chmod +x ./gradlew
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
 
       - name: Build debug APK
-        run: ./gradlew --no-daemon assembleDebug
+        working-directory: ${{ steps.project.outputs.dir }}
+        run: gradle --no-daemon assembleDebug
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: DOOMX-FF-Optimizer-APK
-          path: app/build/outputs/apk/debug/*.apk
+          path: ${{ steps.project.outputs.dir }}/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
