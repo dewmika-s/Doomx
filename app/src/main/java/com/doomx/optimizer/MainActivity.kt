@@ -62,7 +62,7 @@ class MainActivity : Activity() {
             setHintTextColor(muted)
             setTextColor(white)
             textSize = 15f
-            singleLine = true
+            setSingleLine(true)
             background = shape(panel2, 10)
             setPadding(dp(14), dp(13), dp(14), dp(13))
         }
